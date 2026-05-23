@@ -13,7 +13,7 @@ const TILE_URL = (z, y, x) =>
 /* ── Camera distances ───────────────────────────────────────────────────── */
 const START_DIST = 2.8;
 const END_DIST = 1.05;
-const ZOOM_MS = 1400;
+const ZOOM_MS = 1750;
 
 /* ── A handful of major cities for the night-side golden lights ──────────── */
 const CITY_LIGHTS = [

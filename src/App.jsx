@@ -3,6 +3,7 @@ import './index.css';
 
 import { ALL_CITIES } from './data/cities.js';
 import { haversineDistance, calculateScore } from './utils/haversine.js';
+import { countryName } from './utils/countries.js';
 
 import BackgroundGlobe from './components/BackgroundGlobe.jsx';
 import IntroScreen from './components/IntroScreen.jsx';
@@ -66,12 +67,12 @@ export default function App() {
     if (launching) return;
     setLaunching(true);                       // 1. intro UI fades out (0.5s)
     await sleep(500);
-    await (globeRef.current?.launch() ?? Promise.resolve()); // 2-3. zoom + stop (1.4s)
-    setFadeBlack(true);                       // 4. screen fades to black (0.5s)
-    await sleep(500);
+    await (globeRef.current?.launch() ?? Promise.resolve()); // 2-3. zoom + stop (1.7s)
+    setFadeBlack(true);                       // 4. screen eases to black (0.65s)
+    await sleep(680);
     startGame();                              // 5. mount game beneath the black
-    await sleep(80);
-    setFadeBlack(false);                      //    fade lifts → game revealed
+    await sleep(120);
+    setFadeBlack(false);                      //    fade eases back → game revealed
     setLaunching(false);
   }, [launching, startGame]);
 
@@ -82,10 +83,9 @@ export default function App() {
     const city = cities[roundIndex];
     const distance = haversineDistance(lat, lng, city.lat, city.lng);
     const score = calculateScore(distance);
-    const countryName = city.country;
 
     const roundResult = {
-      city: { ...city, countryName },
+      city: { ...city, countryName: countryName(city.country) },
       score,
       distance: Math.round(distance),
       guessLat: lat,
@@ -127,7 +127,7 @@ export default function App() {
     window.__testSkipToResults = () => {
       const remaining = cities.slice(scores.length);
       const fakeScores = remaining.map((city) => ({
-        city: { ...city, countryName: city.country },
+        city: { ...city, countryName: countryName(city.country) },
         score: Math.floor(Math.random() * 100),
         distance: Math.floor(Math.random() * 9000),
         guessLat: city.lat + 5,

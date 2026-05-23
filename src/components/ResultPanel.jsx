@@ -20,6 +20,9 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
   // Track which city we last fetched for — avoid redundant re-fetches
   const lastFetchedCity = useRef(null);
 
+  // Expanded photo (lightbox)
+  const [lightbox, setLightbox] = useState(null);
+
   // Animated score bar width
   const [barWidth, setBarWidth] = useState(0);
   useEffect(() => {
@@ -58,6 +61,7 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
   const color = result ? scoreColor(result.score) : '#fff';
 
   return (
+    <>
     <div className={`result-panel${isOpen ? ' open' : ''}`}>
       {result && (
         <>
@@ -96,7 +100,7 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
           <div style={{ flex: 1 }}>
 
             {/* Image strip */}
-            <ImageStrip images={images} cityName={result.city.name} />
+            <ImageStrip images={images} cityName={result.city.name} onExpand={setLightbox} />
 
             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {wikiLoading ? (
@@ -108,7 +112,17 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
                 <>
                   <WikiSection label="Historical Overview" text={wikiData.historical} />
                   <div className="panel-divider" />
-                  <WikiSection label="Economic Overview"   text={wikiData.economic} />
+                  <div className="wiki-section">
+                    <div className="wiki-section-label">Economic Overview</div>
+                    <div className="wiki-section-text">
+                      {result.city.population ? (
+                        <div className="population-line">
+                          Population: {result.city.population.toLocaleString()}
+                        </div>
+                      ) : null}
+                      {wikiData.economic}
+                    </div>
+                  </div>
                   <div className="panel-divider" />
                   <WikiSection label="Cultural Overview"   text={wikiData.cultural} />
                   <div className="panel-divider" />
@@ -131,6 +145,21 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
         </>
       )}
     </div>
+
+    {lightbox && (
+      <div className="lightbox" onClick={() => setLightbox(null)}>
+        <button
+          className="lightbox-close"
+          onClick={() => setLightbox(null)}
+          aria-label="Close"
+        >
+          &times;
+        </button>
+        <img src={lightbox} alt="" />
+        <div className="lightbox-hint">Tap anywhere to close</div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -156,11 +185,15 @@ function WikiSection({ label, text }) {
   );
 }
 
-function ImageStrip({ images, cityName }) {
+function ImageStrip({ images, cityName, onExpand }) {
   return (
     <div className="image-strip">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="image-tile">
+        <div
+          key={i}
+          className={`image-tile${images[i] ? ' clickable' : ''}`}
+          onClick={images[i] ? () => onExpand(images[i]) : undefined}
+        >
           {images[i] ? (
             <img
               src={images[i]}

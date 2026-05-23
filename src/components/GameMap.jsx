@@ -159,6 +159,8 @@ export default function GameMap({ currentCity, guessLocked, guessCoords, onGuess
       paddingBottomRight,
       maxZoom: MAX_ZOOM,
       animate: true,
+      duration: 1.1,
+      easeLinearity: 0.2,
     });
   }, [guessLocked, guessCoords, currentCity]);
 
