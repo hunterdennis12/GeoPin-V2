@@ -38,8 +38,8 @@ export default function HUD({
       <div className="hud-bar">
         <div className="hud-top-row">
           <span className="hud-logo">GeoPin</span>
-          <span className="hud-counter">City {cityNumber} of {totalRounds}</span>
-          <span className="hud-score">Score: {totalScore.toLocaleString()}</span>
+          <span className="hud-counter">City {cityNumber} / {totalRounds}</span>
+          <span className="hud-score">Score <b>{totalScore.toLocaleString()}</b></span>
         </div>
 
         {/* Progress dots */}

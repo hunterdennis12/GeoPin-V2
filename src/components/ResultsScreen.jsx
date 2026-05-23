@@ -73,7 +73,7 @@ export default function ResultsScreen({ scores, totalScore, onPlayAgain }) {
       {/* ── Play again ───────────────────────────────────────────────── */}
       <div style={{ marginTop: 40 }}>
         <button className="btn-mission" onClick={onPlayAgain}>
-          [ Initiate New Mission ]
+          Initiate New Mission
         </button>
       </div>
     </div>

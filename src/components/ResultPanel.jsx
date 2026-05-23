@@ -63,7 +63,7 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
         <>
           {/* ── Section 1: Score summary ─────────────────────────────── */}
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 2 }}>
+            <div className="panel-city-name">
               {result.city.name}, {result.city.countryName || result.city.country}
             </div>
             <div className="panel-divider" />
@@ -126,7 +126,7 @@ export default function ResultPanel({ isOpen, result, totalScore, isFinalRound, 
 
           {/* ── Next button ──────────────────────────────────────────── */}
           <button className="btn-mission" onClick={onNext} style={{ width: '100%', textAlign: 'center' }}>
-            {isFinalRound ? '[ See Final Results →]' : '[ Next City → ]'}
+            {isFinalRound ? 'Final Results' : 'Next City'}
           </button>
         </>
       )}

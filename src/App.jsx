@@ -1,16 +1,20 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import './index.css';
 
 import { ALL_CITIES } from './data/cities.js';
 import { haversineDistance, calculateScore } from './utils/haversine.js';
 
+import BackgroundGlobe from './components/BackgroundGlobe.jsx';
 import IntroScreen from './components/IntroScreen.jsx';
-import GlobeView from './components/GlobeView.jsx';
+import GameMap from './components/GameMap.jsx';
 import HUD from './components/HUD.jsx';
 import ResultPanel from './components/ResultPanel.jsx';
 import ResultsScreen from './components/ResultsScreen.jsx';
 
 const ROUNDS_PER_GAME = 20;
+const MAX_PTS = 100;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Pick `n` random cities, no duplicates. */
 function pickCities(n) {
@@ -21,30 +25,32 @@ function pickCities(n) {
 /**
  * App — top-level state machine.
  *
- * Screens:
- *   'intro'   → IntroScreen
- *   'game'    → GlobeView + HUD + ResultPanel
- *   'results' → ResultsScreen
+ * Screens:  'intro' → 'game' → 'results'
+ * A single <BackgroundGlobe> is mounted across all screens so the launch
+ * zoom transition is seamless.
  */
 export default function App() {
   const [screen, setScreen] = useState('intro');
+  const [launching, setLaunching] = useState(false);  // intro → game transition
+  const [fadeBlack, setFadeBlack] = useState(false);  // full-screen black fade
+
+  const globeRef = useRef(null);
 
   // ── Game state ──────────────────────────────────────────────────────────
-  const [cities, setCities] = useState([]);           // 20 cities for this round
-  const [roundIndex, setRoundIndex] = useState(0);    // 0-based current city index
-  const [scores, setScores] = useState([]);           // { city, score, distance, guessLat, guessLng } per round
+  const [cities, setCities] = useState([]);
+  const [roundIndex, setRoundIndex] = useState(0);
+  const [scores, setScores] = useState([]);
   const [totalScore, setTotalScore] = useState(0);
 
   // ── Round state ─────────────────────────────────────────────────────────
   const [guessLocked, setGuessLocked] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [hasGuessedOnce, setHasGuessedOnce] = useState(false); // hides hint after first guess
-  const [guessCoords, setGuessCoords] = useState(null);        // { lat, lng }
+  const [hasGuessedOnce, setHasGuessedOnce] = useState(false);
+  const [guessCoords, setGuessCoords] = useState(null);
 
-  // ─── Start a new game ──────────────────────────────────────────────────
+  // ─── Start a new game (resets all round state) ──────────────────────────
   const startGame = useCallback(() => {
-    const newCities = pickCities(ROUNDS_PER_GAME);
-    setCities(newCities);
+    setCities(pickCities(ROUNDS_PER_GAME));
     setRoundIndex(0);
     setScores([]);
     setTotalScore(0);
@@ -55,14 +61,28 @@ export default function App() {
     setScreen('game');
   }, []);
 
-  // ─── Handle a guess from the globe ────────────────────────────────────
+  // ─── Launch transition: fade UI → zoom globe → fade black → game ────────
+  const handleInitiate = useCallback(async () => {
+    if (launching) return;
+    setLaunching(true);                       // 1. intro UI fades out (0.5s)
+    await sleep(500);
+    await (globeRef.current?.launch() ?? Promise.resolve()); // 2-3. zoom + stop (1.4s)
+    setFadeBlack(true);                       // 4. screen fades to black (0.5s)
+    await sleep(500);
+    startGame();                              // 5. mount game beneath the black
+    await sleep(80);
+    setFadeBlack(false);                      //    fade lifts → game revealed
+    setLaunching(false);
+  }, [launching, startGame]);
+
+  // ─── Handle a guess from the map ────────────────────────────────────────
   const handleGuess = useCallback((lat, lng) => {
     if (guessLocked) return;
 
     const city = cities[roundIndex];
     const distance = haversineDistance(lat, lng, city.lat, city.lng);
     const score = calculateScore(distance);
-    const countryName = city.country; // ISO code — pretty names can be added later
+    const countryName = city.country;
 
     const roundResult = {
       city: { ...city, countryName },
@@ -78,15 +98,13 @@ export default function App() {
     setScores((prev) => [...prev, roundResult]);
     setTotalScore((prev) => prev + score);
 
-    // Slight delay before sliding panel in, so the arc has time to draw
+    // Slight delay so the line/markers settle before the panel slides in
     setTimeout(() => setPanelOpen(true), 800);
   }, [guessLocked, cities, roundIndex]);
 
   // ─── Advance to next round ─────────────────────────────────────────────
   const handleNext = useCallback(() => {
     setPanelOpen(false);
-
-    // Give panel time to slide out before resetting
     setTimeout(() => {
       if (roundIndex + 1 >= ROUNDS_PER_GAME) {
         setScreen('results');
@@ -103,21 +121,20 @@ export default function App() {
     startGame();
   }, [startGame]);
 
-  // ─── Dev-mode test helper (removed in production builds via tree-shaking) ──
+  // ─── Dev-mode test helpers ─────────────────────────────────────────────
   if (import.meta.env.DEV && screen === 'game' && cities.length) {
     window.__testGuess = (lat = 0, lng = 0) => handleGuess(lat, lng);
     window.__testSkipToResults = () => {
-      // Fast-forward: push fake scores for remaining rounds then show results
       const remaining = cities.slice(scores.length);
-      const fakeScores = remaining.map(city => ({
+      const fakeScores = remaining.map((city) => ({
         city: { ...city, countryName: city.country },
         score: Math.floor(Math.random() * 100),
         distance: Math.floor(Math.random() * 9000),
         guessLat: city.lat + 5,
         guessLng: city.lng + 5,
       }));
-      setScores(prev => [...prev, ...fakeScores]);
-      setTotalScore(prev => prev + fakeScores.reduce((s, r) => s + r.score, 0));
+      setScores((prev) => [...prev, ...fakeScores]);
+      setTotalScore((prev) => prev + fakeScores.reduce((s, r) => s + r.score, 0));
       setScreen('results');
     };
   }
@@ -128,17 +145,30 @@ export default function App() {
   const isFinalRound = roundIndex === ROUNDS_PER_GAME - 1;
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', background: '#000' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative', background: '#00000a' }}>
+
+      {/* Persistent satellite globe — behind every screen (z-index: 0) */}
+      <BackgroundGlobe
+        ref={globeRef}
+        interactive={screen === 'intro' && !launching}
+        active={screen === 'intro'}
+      />
 
       {/* ── Intro ───────────────────────────────────────────────────────── */}
       {screen === 'intro' && (
-        <IntroScreen onStart={startGame} />
+        <IntroScreen
+          onStart={handleInitiate}
+          fading={launching}
+          poolCount={ALL_CITIES.length}
+          rounds={ROUNDS_PER_GAME}
+          maxPts={MAX_PTS}
+        />
       )}
 
       {/* ── Game ────────────────────────────────────────────────────────── */}
       {screen === 'game' && currentCity && (
         <>
-          <GlobeView
+          <GameMap
             currentCity={currentCity}
             guessLocked={guessLocked}
             guessCoords={guessCoords}
@@ -171,6 +201,9 @@ export default function App() {
           onPlayAgain={handlePlayAgain}
         />
       )}
+
+      {/* Black fade overlay used during the launch transition */}
+      <div className={`fade-overlay${fadeBlack ? ' active' : ''}`} />
     </div>
   );
 }
