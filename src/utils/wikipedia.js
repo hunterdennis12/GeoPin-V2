@@ -8,38 +8,98 @@
 const cache = new Map();
 
 /**
- * Fetch the Wikipedia summary extract for a city.
- * Returns { title, extract, thumbnail } or null on failure.
+ * Fetch a descriptive extract for a city.
+ * Strategy (reduces blank sections vs. the short REST summary):
+ *   1. Resolve the best article title via the search API ("City Country").
+ *   2. Pull the first ~10 plain-text sentences via the extracts API.
+ *   3. Fall back to the REST summary endpoint if that fails.
+ * Returns { title, extract, thumbnail } or null.
  */
 export async function fetchWikiSummary(cityName, countryName) {
   const cacheKey = `summary:${cityName}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
-  // Try city name first, then "City, Country" if that fails
-  const queries = [cityName, `${cityName}, ${countryName}`, `${cityName} city`];
+  let result = null;
 
+  try {
+    const title =
+      (await searchTitle(`${cityName} ${countryName}`)) ||
+      (await searchTitle(cityName));
+    if (title) {
+      const extract = await getExtract(title);
+      if (extract && extract.length > 80) {
+        result = { title, extract, thumbnail: null };
+      }
+    }
+  } catch {
+    // fall through to REST summary
+  }
+
+  if (!result) {
+    result = await restSummary(cityName, countryName);
+  }
+
+  cache.set(cacheKey, result);
+  return result;
+}
+
+/** Resolve the most relevant Wikipedia article title for a query. */
+async function searchTitle(query) {
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+      query,
+    )}&srlimit=1&format=json&origin=*`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.query?.search?.[0]?.title || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pull the first ~10 plain-text sentences of an article (follows redirects). */
+async function getExtract(title) {
+  const url = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exsentences=10&explaintext=1&redirects=1&format=json&origin=*&titles=${encodeURIComponent(
+    title,
+  )}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const pages = data?.query?.pages;
+  if (!pages) return null;
+  for (const page of Object.values(pages)) {
+    if (page.extract && page.extract.length > 0) return page.extract;
+  }
+  return null;
+}
+
+/** Legacy REST summary fallback (single short intro paragraph). */
+async function restSummary(cityName, countryName) {
+  const queries = [`${cityName}, ${countryName}`, cityName, `${cityName} city`];
   for (const q of queries) {
     try {
       const encoded = encodeURIComponent(q.replace(/ /g, '_'));
-      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`;
-      const res = await fetch(url);
+      const res = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`,
+      );
       if (!res.ok) continue;
       const data = await res.json();
-      if (data.extract && data.extract.length > 50) {
-        const result = {
+      if (
+        data.extract &&
+        data.extract.length > 50 &&
+        data.type !== 'disambiguation'
+      ) {
+        return {
           title: data.title,
           extract: data.extract,
           thumbnail: data.thumbnail?.source || null,
         };
-        cache.set(cacheKey, result);
-        return result;
       }
-    } catch (_) {
-      // continue to next query
+    } catch {
+      // try next query
     }
   }
-
-  cache.set(cacheKey, null);
   return null;
 }
 
@@ -98,51 +158,34 @@ export async function fetchCityImages(cityName) {
 }
 
 /**
- * Parse a long Wikipedia extract into 4 named sections.
- * We use sentence-boundary splitting and heuristics since the REST summary
- * API returns a single plain-text extract (not structured).
+ * Parse an extract into 4 named sections. Empty sections return '' so the UI
+ * can hide them (rather than showing "unavailable"). The fun fact is the last
+ * sentence; the remaining lead text is spread across the three overviews.
  *
  * Returns: { historical, economic, cultural, funFact }
- * Each field is a string of up to 3 sentences.
  */
 export function parseExtract(extract) {
-  if (!extract) {
-    return {
-      historical: 'Historical data unavailable.',
-      economic: 'Economic data unavailable.',
-      cultural: 'Cultural data unavailable.',
-      funFact: 'Data unavailable.',
-    };
-  }
+  const empty = { historical: '', economic: '', cultural: '', funFact: '' };
+  if (!extract) return empty;
 
-  // Split into sentences on ". " or "." followed by capital letter
   const sentences = extract
-    .replace(/\n/g, ' ')
-    .split(/(?<=\.)\s+(?=[A-Z])/)
+    .replace(/\n+/g, ' ')
+    .split(/(?<=\.)\s+(?=[A-Z0-9"'(])/)
     .map((s) => s.trim())
     .filter((s) => s.length > 10);
 
-  const total = sentences.length;
+  const n = sentences.length;
+  if (!n) return empty;
 
-  // Distribute sentences across sections
-  const take = (start, count) =>
-    sentences.slice(start, start + count).join(' ') || 'Data unavailable.';
-
-  if (total <= 4) {
-    return {
-      historical: take(0, 1),
-      economic: take(1, 1),
-      cultural: take(2, 1),
-      funFact: take(3, 1) || take(0, 1),
-    };
-  }
-
-  const quarter = Math.floor(total / 4);
+  // Use the final sentence as a fun fact only when there's enough to spare.
+  const funFact = n >= 5 ? sentences[n - 1] : '';
+  const pool = n >= 5 ? sentences.slice(0, n - 1) : sentences.slice();
+  const per = Math.ceil(pool.length / 3);
 
   return {
-    historical: take(0, Math.min(3, quarter)),
-    economic: take(quarter, Math.min(3, quarter)),
-    cultural: take(quarter * 2, Math.min(3, quarter)),
-    funFact: take(total - 1, 1),
+    historical: pool.slice(0, per).join(' '),
+    economic: pool.slice(per, per * 2).join(' '),
+    cultural: pool.slice(per * 2).join(' '),
+    funFact,
   };
 }

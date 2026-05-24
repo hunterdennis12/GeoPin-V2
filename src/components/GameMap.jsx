@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { COUNTRY_BORDERS } from '../data/countryBorders.js';
 
 const ESRI_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -136,6 +137,24 @@ export default function GameMap({ currentCity, guessLocked, guessCoords, onGuess
     const guess = [guessCoords.lat, guessCoords.lng];
     const actual = [currentCity.lat, currentCity.lng];
 
+    // Outline the actual city's country (drawn first, under the pins/line)
+    const border = COUNTRY_BORDERS[currentCity.country];
+    if (border) {
+      L.geoJSON(
+        { type: 'Feature', geometry: border },
+        {
+          interactive: false,
+          style: {
+            color: '#8fc0ef',
+            weight: 2,
+            opacity: 0.9,
+            fillColor: '#4a8fcc',
+            fillOpacity: 0.12,
+          },
+        },
+      ).addTo(layer);
+    }
+
     L.polyline(greatCircle(guess[0], guess[1], actual[0], actual[1]), {
       color: '#8fc0ef',
       weight: 1.5,
@@ -146,12 +165,12 @@ export default function GameMap({ currentCity, guessLocked, guessCoords, onGuess
     L.marker(guess, { icon: pinIcon('guess', 'Your guess'), interactive: false }).addTo(layer);
     L.marker(actual, { icon: pinIcon('actual', currentCity.name), interactive: false }).addTo(layer);
 
-    // Reserve space for the HUD (top) and the result panel (right on desktop,
-    // bottom on mobile) so both pins stay visible once the panel slides in.
+    // Reserve space for the HUD (top) and the result panel. On mobile the panel
+    // opens collapsed (~44vh) so the map stays large — only pad for that.
     const isMobile = window.innerWidth < 768;
-    const paddingTopLeft = [30, 140];
+    const paddingTopLeft = [30, 150];
     const paddingBottomRight = isMobile
-      ? [30, Math.round(window.innerHeight * 0.64) + 30]
+      ? [30, Math.round(window.innerHeight * 0.44) + 30]
       : [410, 40];
     const bounds = L.latLngBounds([guess, actual]);
     map.fitBounds(bounds, {
