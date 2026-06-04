@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { countryName } from '../utils/countries.js';
 
 /**
  * HUD — fixed overlay on top of the game globe.
@@ -38,8 +39,8 @@ export default function HUD({
       <div className="hud-bar">
         <div className="hud-top-row">
           <span className="hud-logo">GeoPin</span>
-          <span className="hud-counter">City {cityNumber} of {totalRounds}</span>
-          <span className="hud-score">Score: {totalScore.toLocaleString()}</span>
+          <span className="hud-counter">City {cityNumber} / {totalRounds}</span>
+          <span className="hud-score">Score <b>{totalScore.toLocaleString()}</b></span>
         </div>
 
         {/* Progress dots */}
@@ -65,6 +66,7 @@ export default function HUD({
         >
           <div className="city-prompt-label">Locate this city:</div>
           <div className="city-prompt-name">{currentCity.name}</div>
+          <div className="city-prompt-country">{countryName(currentCity.country)}</div>
           {!hasGuessedOnce && !guessLocked && (
             <div className="city-prompt-hint">Click the globe to place your pin</div>
           )}
